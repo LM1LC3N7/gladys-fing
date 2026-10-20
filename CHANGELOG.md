@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-20
+
 ### Added
 
 - First version: the devices of a network seen by a Fing Agent or a Fingbox,
@@ -30,4 +32,5 @@ the notes of the version's GitHub Release.
   always among the 500 followed.
 - Documentation in English and French. Never tested with a real Fing Agent.
 
-[Unreleased]: https://github.com/LM1LC3N7/gladys-fing/commits/main
+[Unreleased]: https://github.com/LM1LC3N7/gladys-fing/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/LM1LC3N7/gladys-fing/releases/tag/v0.1.1
