@@ -1,67 +1,123 @@
-# Template de démonstration
+# Fing
 
-Ceci est la documentation utilisateur de l'intégration. Gladys ré-héberge ce
-fichier et affiche un lien **Documentation** permanent vers lui dans l'écran
-de configuration (dans la langue de l'utilisateur, avec l'anglais en repli) —
-c'est au moment de configurer que l'utilisateur en a le plus besoin. Gardez
-les courtes indications d'accueil dans les blocs `section` du `config_schema`
-du manifest ; mettez ici le pas-à-pas détaillé (captures d'écran, dépannage…).
+Les appareils de votre réseau vus par [Fing](https://www.fing.com), dans
+Gladys, par l'API locale d'un **Fing Agent** (le logiciel Fing sur un
+ordinateur toujours allumé ou un Raspberry Pi) ou d'une **Fingbox** :
 
-## Ce que vous obtenez
+- chaque appareil que Fing connaît peut devenir un appareil Gladys (onglet
+  Découverte) : **en ligne** (oui / non), **adresse IP** et **dernier
+  changement** (la dernière fois que Fing l'a vu arriver ou partir) ;
+- le réseau devient un appareil avec ses **appareils en ligne** et ses
+  **appareils** au total ;
+- trois déclencheurs de scène : **Appareil en ligne** (un téléphone de retour
+  à la maison, par exemple), **Appareil hors ligne** et **Nouvel appareil sur
+  le réseau**.
 
-Six appareils de démonstration apparaissent après l'installation : une
-station météo (vraies données Open-Meteo), un interrupteur, une lampe
-variable, une prise connectée avec mesure de puissance, un détecteur de
-mouvement et une caméra.
+Lecture seule : Gladys ne change jamais rien dans Fing (aucun appareil
+bloqué, rien de renommé).
+
+> **Cette intégration n'a jamais été testée avec un vrai Fing Agent.** Cette
+> première version a été portée depuis fing-agent-pyapi, la bibliothèque de
+> Fing qu'utilise Home Assistant, et testée seulement contre un faux Fing
+> Agent. Dites sur le forum Gladys ce qui marche et ce qui ne marche pas.
+
+Intégration non officielle, sans lien avec Fing.
+
+## Avant de commencer : activer l'API locale
+
+1. Installez un Fing Agent sur un ordinateur ou un Raspberry Pi qui reste
+   allumé, dans votre réseau, ou utilisez une Fingbox, et laissez-le analyser
+   le réseau.
+2. Dans l'application Fing, ouvrez les réglages de l'agent (ou de la
+   Fingbox) et activez son **API locale**. L'application affiche une **clé
+   d'API** : copiez-la. Les noms des menus changent selon les versions de
+   l'application ; l'API locale peut demander un abonnement Fing, vérifiez
+   dans l'application.
+3. Donnez à l'agent une adresse IP fixe dans votre box : Gladys le joint par
+   son adresse.
 
 ## Configuration
 
-1. Ouvrez l'onglet **Configuration** de l'intégration.
-2. Renseignez la **latitude** et la **longitude** que la station météo de
-   démonstration doit observer (Paris par défaut), et choisissez votre unité
-   de température. L'**intervalle de rafraîchissement** règle la fréquence
-   de lecture de la station météo et de la puissance de la prise : toutes
-   les 5 minutes par défaut, toutes les minutes au plus.
-3. Enregistrez : les appareils apparaissent dans l'onglet **Découverte**,
-   prêts à être ajoutés.
+- **Adresse du Fing Agent** : son adresse IP (`192.168.1.20`) ou son nom
+  d'hôte. Une adresse collée depuis un navigateur
+  (`http://192.168.1.20:49090`) est lue comme son hôte et son port.
+  `https`, un chemin ou des paramètres sont refusés.
+- **Port de l'API locale** : `49090` sauf si vous l'avez changé.
+- **Clé d'API de l'API locale** : gardée par Gladys dans sa base, jamais
+  réaffichée, envoyée seulement au Fing Agent. L'API locale de Fing est en
+  HTTP simple et prend la clé dans l'adresse de la requête
+  (`/1/devices?auth=…`) : la clé traverse votre réseau local en clair.
+  Gardez l'agent sur un réseau de confiance. L'intégration n'écrit jamais
+  cette adresse, la clé ni une adresse MAC dans ses journaux, ni la clé dans
+  son volume `/data`.
+- **Rafraîchissement** : fréquence de lecture des appareils (toutes les
+  minutes par défaut, une requête à chaque fois). Les déclencheurs de scène
+  démarrent jusqu'à ce délai après le changement, en plus du temps que Fing
+  met lui-même à le voir.
 
-Le réglage **Préférer la connexion locale** pilote la prise de
-démonstration : elle affiche en badge le canal réellement utilisé (local ou
-cloud), avec un point orange quand elle fonctionne en mode dégradé (local
-refusé, bascule cloud).
+Le bouton **Tester la connexion** relit les appareils et indique combien
+sont en ligne.
 
-## Actions
+## Appareils
 
-- **Tester le fournisseur météo** — effectue une requête en direct vers
-  Open-Meteo et affiche la température et l'humidité actuelles sous le
-  bouton.
-- **Identifier un appareil** — choisissez un de vos appareils dans la liste
-  et il se signale (la lampe de démonstration « clignote » dans les logs).
+Fing liste tous les appareils qu'il a vus sur le réseau, en ligne ou non.
+L'onglet **Découverte** les montre tous (500 au plus) ; n'ajoutez que ceux à
+suivre (téléphones pour la présence, un NAS, une imprimante…).
 
-## Scènes
+- L'appareil Gladys d'un appareil Fing a pour clé son **adresse MAC** : un
+  renommage dans Fing ou une nouvelle adresse IP garde le même appareil et
+  son historique. Son nom dans la Découverte est celui donné dans Fing, sinon
+  son fabricant et son modèle, ou son type, avec son adresse IP.
+- **Téléphones et adresses Wi-Fi privées** : les téléphones et ordinateurs
+  récents utilisent une adresse MAC aléatoire différente par réseau Wi-Fi, et
+  certains la changent de temps en temps. Pour une présence stable,
+  désactivez l'adresse privée (aléatoire) pour le réseau de la maison sur le
+  téléphone ; sinon le téléphone apparaît comme un nouvel appareil après
+  chaque changement.
+- **En ligne** suit ce que dit Fing. Fing attend quelques minutes avant de
+  dire qu'un appareil est parti : un téléphone en veille peut ne plus
+  répondre en Wi-Fi pendant un moment.
+- **Dernier changement** est publié comme une date en UTC
+  (`2026-10-17 08:00 UTC`).
+- Un appareil que Fing ne liste plus garde ses dernières valeurs dans Gladys
+  et est montré injoignable.
 
-L'intégration ajoute ses propres cartes à l'éditeur de scènes (Gladys 5.1
-ou plus récent), dans la catégorie **Intégrations** :
+L'appareil **Fing network** compte les appareils que Fing liste (tous, même
+au-delà des 500 suivis) et ceux en ligne.
 
-- **Mouvement détecté** (déclencheur) — lance la scène quand un détecteur
-  de démonstration voit bouger quelque chose. Choisissez éventuellement le
-  détecteur et ce qui a bougé (personne, animal) ; laissés vides, toute
-  détection correspond. Les actions suivantes peuvent lire ce qui a bougé
-  avec `{{triggerEvent.data.target}}`.
-- **Identifier un appareil** (action) — fait se signaler l'appareil choisi.
-  Elle indique si l'appareil a pu se signaler, pour que les actions
-  suivantes puissent en dépendre.
+## Déclencheurs de scène
 
-## Tableau de bord
+- **Appareil en ligne**, **Appareil hors ligne** : un appareil que Fing
+  voyait hors ligne (en ligne) est en ligne (hors ligne) à la lecture
+  suivante. Filtrez sur un appareil ou laissez vide pour tous. Variables :
+  le nom, l'adresse IP et le fabricant de l'appareil.
+- **Nouvel appareil sur le réseau** : Fing liste une adresse MAC qu'il ne
+  listait pas à la lecture précédente. Utile pour être prévenu quand un
+  appareil inconnu rejoint votre réseau. L'appareil n'est pas encore dans
+  Gladys : pas de filtre d'appareil. Les mêmes variables.
 
-Ajoutez le widget **État de la démo** à un tableau de bord : il affiche en
-direct la température de la station météo et la puissance de la prise du
-bureau, la connexion utilisée par la prise (en orange si dégradée) et la
-position observée. Son bouton **Identifier la lampe** fait se signaler la
-lampe de démonstration.
+Aucun déclencheur ne part à la première lecture, après une panne du Fing
+Agent ou après un redémarrage de l'intégration (chaque lecture n'est
+comparée qu'à la précédente) : un appareil apparu pendant ce temps n'est pas
+annoncé. Trente événements au plus sont envoyés par lecture.
 
-## Dépannage
+## En cas de problème
 
-L'intégration journalise tout ce qu'elle fait : consultez les logs de
-l'intégration depuis l'interface Gladys (ou `docker logs` sur l'hôte) avec
-`LOG_LEVEL=debug` pour le détail complet.
+Le statut de connexion de l'intégration dit ce qui se passe :
+
+- **Clé d'API refusée** (HTTP 401 ou 403) : Gladys s'arrête et ne réessaie
+  pas seul, même après un redémarrage. Vérifiez la clé dans l'application
+  Fing, collez-la et enregistrez la configuration.
+- **HTTP 429 ou erreur serveur (5xx)** : toutes les requêtes sont suspendues
+  (d'une minute à six heures), et la pause survit à un redémarrage.
+- **Pas de réponse, mauvaise adresse ou mauvais port** : Gladys réessaie,
+  jamais plus vite que le rafraîchissement, en attendant plus longtemps à
+  chaque fois (jusqu'à 30 minutes).
+
+## Vie privée
+
+Gladys ne garde que ce qu'il montre : le nom, le fabricant, le modèle, le
+type, l'adresse IP, l'état et le dernier changement de chaque appareil. Le
+contact auquel Fing a lié un appareil et l'identifiant du réseau ne sont pas
+gardés. Les adresses MAC ne servent qu'aux identifiants externes des appareils ;
+elles ne sont jamais écrites dans un journal.
