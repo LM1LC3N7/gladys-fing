@@ -22,7 +22,12 @@ the notes of the version's GitHub Release.
   (remembered in `/data` as a salted HMAC); HTTP 429 and 5xx pause every
   request, the pause kept in `/data` and bounded; other failures retried,
   never faster than the refresh.
-- Test the connection button.
+- Test the connection button. The scan button, the test button and a
+  reconnection to Gladys never read the agent faster than the refresh: they
+  answer from the last reading while it is recent.
+- A name that is a MAC address is replaced by the vendor, model or type; a
+  device listed twice by Fing is merged; the devices added to Gladys are
+  always among the 500 followed.
 - Documentation in English and French. Never tested with a real Fing Agent.
 
 [Unreleased]: https://github.com/LM1LC3N7/gladys-fing/commits/main

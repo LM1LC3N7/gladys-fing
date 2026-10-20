@@ -55,8 +55,10 @@ Intégration non officielle, sans lien avec Fing.
   démarrent jusqu'à ce délai après le changement, en plus du temps que Fing
   met lui-même à le voir.
 
-Le bouton **Tester la connexion** relit les appareils et indique combien
-sont en ligne.
+Le bouton **Tester la connexion** indique combien d'appareils sont en
+ligne. Comme l'analyse de l'onglet Découverte et un redémarrage de Gladys, il
+ne relit l'agent que si la dernière lecture est plus ancienne que le
+rafraîchissement ; sinon il répond d'après cette lecture.
 
 ## Appareils
 
@@ -67,7 +69,10 @@ suivre (téléphones pour la présence, un NAS, une imprimante…).
 - L'appareil Gladys d'un appareil Fing a pour clé son **adresse MAC** : un
   renommage dans Fing ou une nouvelle adresse IP garde le même appareil et
   son historique. Son nom dans la Découverte est celui donné dans Fing, sinon
-  son fabricant et son modèle, ou son type, avec son adresse IP.
+  son fabricant et son modèle, ou son type, avec son adresse IP (un nom qui
+  contient une adresse MAC est remplacé de la même façon). Un appareil que
+  Fing liste deux fois est fusionné.
+- Les appareils ajoutés à Gladys font toujours partie des 500 suivis.
 - **Téléphones et adresses Wi-Fi privées** : les téléphones et ordinateurs
   récents utilisent une adresse MAC aléatoire différente par réseau Wi-Fi, et
   certains la changent de temps en temps. Pour une présence stable,

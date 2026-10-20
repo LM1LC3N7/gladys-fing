@@ -30,6 +30,17 @@ up to date at the end of every milestone.
       Fing Agent.** No Docker on this PC: no e2e test in a container. The
       store validator was not run by the development agent (it runs in the
       real terminal only).
+- [x] **Review corrections 1** (2026-10-20): a date out of the range of
+      `Date` (1e300, nanoseconds) is unknown and one device that cannot be
+      published never stops the others (I1); a reading that ends after a
+      restart publishes, fires and sets nothing (I2); Discovery, the test
+      button and every `connected` answer from the last reading while it is
+      younger than the poll interval, the comparison going on (I3); a Fing
+      label holding a MAC address is replaced (M1); a MAC listed twice is
+      merged the same way in any order (M2); devices created in Gladys are
+      followed first and `new_device` compares with every MAC of the
+      previous reading (M3); a pause with nothing read yet still publishes
+      the network device (M4). Each with a test.
 
 ## Decisions
 
@@ -59,10 +70,24 @@ up to date at the end of every milestone.
   key is unknown (TODO below).
 - **Timeout 20 s** (the Python library waits 120 s): the test button must
   answer within its 30 s.
-- **New device** = a MAC address absent from the previous reading of this
-  run (in memory; nothing persisted, no MAC in `/data`): not announced after
-  a restart or an outage. A device leaving the list and coming back is
-  announced again.
+- **New device** = a MAC address absent from the whole previous reading of
+  this run (all MACs, not only the 500 followed; in memory; nothing
+  persisted, no MAC in `/data`): not announced after a restart or an outage.
+  A device leaving the list and coming back is announced again.
+- **Never read faster than the interval**: the scan button, the test button
+  and a reconnection to Gladys reuse the last reading while it is younger
+  than the poll interval (status, Discovery, states, badges sent again from
+  it; the loop keeps its rhythm; the comparison goes on). A configuration
+  saved with another agent or key reads at once; a refused key forgets the
+  last reading.
+- **Followed devices**: those created in Gladys first, then MAC order, 500
+  at most.
+- **Duplicates**: a MAC listed twice is merged (online if one entry is, the
+  latest last change, the other fields of the entry changed last).
+- **Labels**: a name, vendor, model or type holding a MAC address is
+  dropped (the fallback name is used).
+- **Dates**: within 2000-2200 only (numbers: seconds or milliseconds),
+  else unknown.
 - **Scene variables** `device_name`, `ip`, `vendor`: a string or null, never
   undefined nor NaN. No MAC address.
 - **Caps**: 5000 devices read, 500 followed, 30 events per reading, 250

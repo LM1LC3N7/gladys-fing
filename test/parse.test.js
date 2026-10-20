@@ -1,7 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  cleanLabel,
   cleanText,
+  mergeDevices,
   formatDate,
   normalizeMac,
   parseDate,
@@ -50,6 +52,69 @@ test('parseDate and formatDate', () => {
   assert.equal(parseDate('nope'), null);
   assert.equal(parseDate('x'.repeat(100)), null);
   assert.equal(formatDate(null), null);
+});
+
+test('I1: dates out of range are unknown; formatDate never throws', () => {
+  for (const value of [1e300, 1.7e18, 1e14, -5, Number.NaN, Infinity, '+275760-09-14T00:00:00Z']) {
+    assert.equal(parseDate(value), null, String(value));
+  }
+  assert.equal(parseDate('2300-01-01T00:00:00Z'), null, 'after 2200');
+  for (const value of [1e300, 8.64e15 + 1, -1e300, Infinity, undefined]) {
+    assert.equal(formatDate(value), null, String(value));
+  }
+});
+
+test('M1: a label holding a MAC address is dropped', () => {
+  for (const value of [
+    'AA:BB:CC:DD:EE:FF',
+    'aa-bb-cc-dd-ee-ff',
+    'aabb.ccdd.eeff',
+    'esp-aabbccddeeff',
+    'Device AA:BB:CC:DD:EE:FF (guest)',
+  ]) {
+    assert.equal(cleanLabel(value), null, value);
+  }
+  for (const value of ['NAS', 'iPhone 15', 'Living room TV 4K', 'abc123']) {
+    assert.equal(cleanLabel(value), value);
+  }
+  const [device] = parseDevices({
+    devices: [{ mac: 'AA:BB:CC:DD:EE:01', name: 'AA:BB:CC:DD:EE:01', make: 'Espressif' }],
+  }).devices;
+  assert.equal(device.name, 'Espressif');
+});
+
+test('M2: two entries of one MAC merge the same way in any order', () => {
+  const up = {
+    mac: 'AA:BB:CC:00:00:01',
+    name: 'New',
+    state: 'UP',
+    last_changed: '2026-10-17T08:00:00Z',
+  };
+  const down = {
+    mac: 'aa-bb-cc-00-00-01',
+    name: 'Old',
+    state: 'DOWN',
+    last_changed: '2026-01-01T00:00:00Z',
+  };
+  const unknown = { mac: 'aabbcc000001', name: 'Odd', state: 'SLEEP' };
+  const orders = [
+    [up, down, unknown],
+    [down, unknown, up],
+    [unknown, up, down],
+  ].map((list) => parseDevices({ devices: list }).devices);
+  for (const devices of orders) assert.deepEqual(devices, orders[0]);
+  assert.equal(orders[0][0].online, true);
+  assert.equal(orders[0][0].name, 'New');
+  assert.equal(formatDate(orders[0][0].lastChange), '2026-10-17 08:00 UTC');
+  const offline = parseDevices({ devices: [unknown, down] }).devices[0];
+  assert.equal(offline.online, false);
+  assert.equal(
+    mergeDevices(
+      { mac: 'a', online: null, lastChange: null, name: 'x' },
+      { mac: 'a', online: null, lastChange: null, name: 'y' },
+    ).name,
+    'x',
+  );
 });
 
 test('cleanText: one printable line, cut', () => {

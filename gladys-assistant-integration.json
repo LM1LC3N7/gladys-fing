@@ -85,8 +85,8 @@
       "key": "test_connection",
       "label": { "en": "Test the connection", "fr": "Tester la connexion" },
       "description": {
-        "en": "Reads the devices again and says how many are online. A refused key is tried again only when you save the configuration.",
-        "fr": "Relit les appareils et indique combien sont en ligne. Une clé refusée n'est réessayée qu'à l'enregistrement de la configuration."
+        "en": "Says how many devices are online, reading them again when the last reading is older than the refresh. A refused key is tried again only when you save the configuration.",
+        "fr": "Indique combien d'appareils sont en ligne, en les relisant quand la dernière lecture est plus ancienne que le rafraîchissement. Une clé refusée n'est réessayée qu'à l'enregistrement de la configuration."
       },
       "timeout_seconds": 30
     }

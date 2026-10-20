@@ -318,7 +318,7 @@ test('every connection to Gladys sends the status and Discovery again', async ()
   assert.equal(gladys.fake.connectionStatus.connected, true);
   assert.equal(gladys.fake.bodies('POST', '/discovered_device').length, discoveries + 1);
   assert.equal(gladys.fake.discoveredDevices.length, 4);
-  assert.equal(fing.requests.length, 2);
+  assert.equal(fing.requests.length, 1, 'from the last reading: not read again yet');
 });
 
 test('a configuration that cannot work: said, no request', async () => {
@@ -383,8 +383,8 @@ test('read only: a command is refused', async () => {
   await assert.rejects(app.setValue(), /only reads Fing/);
 });
 
-test('the test button reads again and counts', async () => {
-  const { gladys, fing } = await setup();
+test('the test button counts; it reads again only once the interval is over', async () => {
+  const { gladys, fing, clock } = await setup();
   const {
     data: { message: answer },
   } = await gladys.fake.action(ACTIONS.TEST);
@@ -392,7 +392,157 @@ test('the test button reads again and counts', async () => {
     en: 'Connected: 2 of 3 devices online. Add the ones to follow from the Discovery tab.',
     fr: 'Connecté : 2 appareils en ligne sur 3. Ajoutez ceux à suivre depuis l’onglet Découverte.',
   });
+  assert.equal(fing.requests.length, 1, 'the last reading is less than 60 s old');
+  clock.now += 60_000;
+  fingOf(fing, TV).state = 'UP';
+  const {
+    data: { message: again },
+  } = await gladys.fake.action(ACTIONS.TEST);
+  assert.match(again.en, /3 of 3 devices online/);
   assert.equal(fing.requests.length, 2);
+});
+
+test('I3: scan, test button and `connected` never read faster than the interval', async () => {
+  const { gladys, fing, app, timers, clock } = await setup();
+  for (let i = 0; i < 5; i += 1) await gladys.fake.scanRequest();
+  for (let i = 0; i < 5; i += 1) await gladys.fake.action(ACTIONS.TEST);
+  for (let i = 0; i < 5; i += 1) await reconnect(gladys, app);
+  assert.equal(fing.requests.length, 1);
+  assert.equal(gladys.fake.discoveredDevices.length, 4, 'Discovery from the last reading');
+  assert.equal(gladys.fake.connectionStatus.connected, true);
+  // The loop goes on at the end of the interval of the last reading...
+  clock.now += 20_000;
+  await reconnect(gladys, app);
+  assert.deepEqual(timers.delays(), [40_000]);
+  // ...and the comparison goes on: a change across a reconnection fires.
+  fingOf(fing, TV).state = 'UP';
+  await timers.run();
+  assert.equal(fing.requests.length, 2);
+  assert.deepEqual(
+    gladys.fake.sceneEvents.map((e) => e.key),
+    [SCENE_TRIGGERS.DEVICE_ONLINE],
+  );
+  // A configuration saved with another agent reads at once.
+  await gladys.fake.configUpdated({ ...BASE_CONFIG, host: '192.168.1.6' });
+  await app.queue;
+  assert.equal(fing.requests.length, 3);
+  assert.equal(fing.requests[2].host, '192.168.1.6');
+});
+
+test('I1: a date out of the range of Date never stops the integration', async () => {
+  const fing = createFakeFing();
+  fing.devices[0].last_changed = 1e300;
+  fing.devices[1].last_changed = 1.7e18; // nanoseconds
+  const { gladys, app, logs } = await setup({ fing });
+  assert.equal(app.online, true);
+  assert.equal(gladys.fake.connectionStatus.connected, true);
+  assert.equal(last(gladys, PHONE, 'online'), 1);
+  assert.equal(last(gladys, PHONE, 'last_change'), undefined, 'an unknown date is not sent');
+  assert.equal(last(gladys, NAS, 'last_change'), undefined);
+  assert.equal(last(gladys, TV, 'last_change'), '2026-10-16 21:30 UTC');
+  assertClean(logs);
+});
+
+test('I2: a reading that ends after a new configuration publishes nothing', async () => {
+  const { gladys, fing, app, timers } = await setup();
+  // Gladys is slow to take the states of the next reading.
+  let release;
+  const original = gladys.publishChangedStates.bind(gladys);
+  gladys.publishChangedStates = async (states) => {
+    await new Promise((resolve) => (release = resolve));
+    return original(states);
+  };
+  fingOf(fing, PHONE).state = 'DOWN';
+  const reading = poll(timers);
+  for (let i = 0; i < 10; i += 1) await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(typeof release, 'function', 'the reading waits for Gladys');
+  // The user saves a configuration that cannot work meanwhile.
+  await gladys.fake.configUpdated({ host: 'http://x/path', api_key: KEY });
+  await app.queue;
+  assert.match(gladys.fake.connectionStatus.message.en, /not valid/);
+  gladys.publishChangedStates = original;
+  release();
+  await reading;
+  for (let i = 0; i < 10; i += 1) await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(
+    gladys.fake.connectionStatus.connected,
+    false,
+    'the status of the new configuration',
+  );
+  assert.match(gladys.fake.connectionStatus.message.en, /not valid/);
+  assert.equal(gladys.fake.sceneEvents.length, 0, 'no event of the old reading');
+  assert.deepEqual(timers.delays(), [], 'no loop of the old configuration');
+});
+
+test('M1: a Fing name that is a MAC address never reaches Gladys', async () => {
+  const { gladys, fing, timers } = await setup();
+  fing.devices.push(
+    fingDevice('AA:BB:CC:00:00:09', 'AA:BB:CC:00:00:09', { make: 'Espressif', model: '' }),
+    fingDevice('AA:BB:CC:00:00:0A', 'esp-aabbcc00000a', { make: '', model: '', type: '' }),
+  );
+  await poll(timers);
+  const sent = JSON.stringify([gladys.fake.sceneEvents, gladys.fake.discoveredDevices]);
+  assert.ok(!/aa:bb:cc|aabbcc00000/i.test(sent.replaceAll(`device:aabbcc`, '')), sent);
+  assert.deepEqual(
+    gladys.fake.sceneEvents.map((e) => e.data.device_name),
+    ['Espressif (192.168.1.10)', 'Unknown device (192.168.1.10)'],
+  );
+});
+
+test('M2: a MAC listed twice gives the same device whatever the order', async () => {
+  const fing = createFakeFing();
+  fing.devices.push(
+    fingDevice('aa-bb-cc-00-00-01', 'Phone (old)', {
+      state: 'DOWN',
+      last_changed: '2026-01-01T00:00:00Z',
+    }),
+  );
+  const { gladys, timers } = await setup({ fing });
+  assert.equal(last(gladys, PHONE, 'online'), 1, 'online when one entry is');
+  const [a, b] = [fing.devices[0], fing.devices[3]];
+  fing.devices[0] = b;
+  fing.devices[3] = a;
+  await poll(timers);
+  assert.equal(gladys.fake.sceneEvents.length, 0);
+  assert.equal(gladys.fake.discoveredDevices[1].name, 'Phone of Alice', 'the entry changed last');
+});
+
+test('M3: beyond 500 devices, created ones stay followed and no known one is new', async () => {
+  const fing = createFakeFing();
+  const mac = (i) =>
+    `02:00:00:00:${(i >> 8).toString(16).padStart(2, '0')}:${(i % 256)
+      .toString(16)
+      .padStart(2, '0')}`;
+  fing.devices = Array.from({ length: 600 }, (_, i) => fingDevice(mac(i), `D${i}`));
+  const lastMac = '020000000257'; // D599, beyond the first 500 in MAC order
+  const { gladys, timers } = await setup({ fing, created: [lastMac] });
+  assert.equal(gladys.fake.discoveredDevices.length, 501);
+  assert.ok(gladys.fake.discoveredDevices.some((d) => d.external_id.endsWith(lastMac)));
+  assert.equal(gladys.fake.lastState(featureId(lastMac, 'online')), 1);
+  fing.devices.push(fingDevice('01:00:00:00:00:01', 'newcomer'));
+  await poll(timers);
+  fing.devices.pop();
+  await poll(timers);
+  assert.deepEqual(
+    gladys.fake.sceneEvents.map((e) => [e.key, e.data.device_name]),
+    [[SCENE_TRIGGERS.NEW_DEVICE, 'newcomer']],
+  );
+  assert.match(gladys.fake.connectionStatus.message.en, /600 devices online\. 100 more/);
+});
+
+test('M4: a pause kept in /data with nothing read yet still publishes the network device', async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'fing-m4-'));
+  const fing = createFakeFing();
+  fing.failures.push({ status: 503 });
+  const first = await setup({ fing, dataDir });
+  await first.app.stop();
+  const again = await setup({ fing, dataDir });
+  assert.match(again.gladys.fake.connectionStatus.message.en, /pause goes on/);
+  assert.deepEqual(
+    again.gladys.fake.discoveredDevices.map((d) => d.external_id),
+    [`ext:${SELECTOR}:network:main`],
+  );
+  assert.equal(fing.requests.length, 1);
 });
 
 test('no device yet: said', async () => {

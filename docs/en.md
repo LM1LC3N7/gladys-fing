@@ -49,8 +49,10 @@ Unofficial integration, not affiliated with Fing.
   default, one request each time). The scene triggers start up to this long
   after the change, on top of the time Fing itself takes to notice it.
 
-The **Test the connection** button reads the devices again and says how
-many are online.
+The **Test the connection** button says how many devices are online. Like
+the scan of the Discovery tab and a restart of Gladys, it reads the agent
+again only when the last reading is older than the refresh; otherwise it
+answers from that reading.
 
 ## Devices
 
@@ -61,7 +63,9 @@ to follow (phones for presence, a NAS, a printer...).
 - The Gladys device of a Fing device is keyed on its **MAC address**: a
   rename in Fing or a new IP address keeps the same device and its history.
   Its name in Discovery is the name given in Fing, or else its vendor and
-  model, or its type, with its IP address.
+  model, or its type, with its IP address (a name that holds a MAC address
+  is replaced the same way). A device Fing lists twice is merged.
+- The devices you added to Gladys are always among the 500 followed.
 - **Phones and private Wi-Fi addresses**: recent phones and computers use a
   different, random MAC address per Wi-Fi network, and some change it from
   time to time. For a stable presence, turn off the private (random)

@@ -49,6 +49,9 @@ const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 const valueOf = (s) => (s.text !== undefined ? `t:${s.text}` : `s:${s.state}`);
 /** A scene variable: a string, or null (never undefined, never NaN). */
 const orNull = (value) => (typeof value === 'string' && value ? value : null);
+/** What Discovery shows of the devices: sent again when it changes. */
+const discoveredKeyOf = (devices) =>
+  JSON.stringify(devices.map((d) => [d.mac, d.name, d.vendor, d.model, d.type]));
 
 export class FingApp {
   /**
@@ -111,6 +114,8 @@ export class FingApp {
     this.retryDelay = this.minRetry();
     /** mac -> device, the followed devices of the last reading. */
     this.devices = new Map();
+    /** Every MAC address of the last reading (followed or not): what `new_device` compares with. */
+    this.allMacs = new Set();
     /** Devices above the cap of LIMITS.DEVICES. */
     this.capped = 0;
     this.counts = null;
@@ -275,13 +280,52 @@ export class FingApp {
       }
       this.retryDelay = waiting.delay;
     }
+    // The last reading of this agent and key worked less than one interval
+    // ago (a reconnection to Gladys, the test button, a configuration saved
+    // with the same agent and key): everything is sent again from it, and
+    // the agent is read again only when the interval is over.
+    const fresh = this.freshKnown();
+    if (fresh && !this.retryWait) {
+      await this.resume(fresh, generation);
+      return;
+    }
     await this.connect(generation);
   }
 
-  /** Discovery again from the devices of the last reading (a pause, a wait). */
+  /** The last reading, when it worked less than one poll interval ago; else null. */
+  freshKnown() {
+    const known = this.known;
+    if (!known || !known.ok || known.key !== this.knownKey(this.config)) return null;
+    const age = this.now() - known.at;
+    return age >= 0 && age < this.pollMs() ? known : null;
+  }
+
+  /** Online again from the last reading: Discovery, states, badges, status, the loop. */
+  async resume(known, generation) {
+    this.devices = new Map(known.devices.map((device) => [device.mac, device]));
+    this.allMacs = known.allMacs;
+    this.counts = known.counts;
+    this.capped = known.capped;
+    // The comparison goes on from that reading: no transition is lost.
+    this.baseline = true;
+    this.online = true;
+    this.discoveredKey = discoveredKeyOf(known.devices);
+    await this.publishDiscovered();
+    if (generation !== this.generation) return;
+    await this.publishDeviceStates();
+    await this.publishTransports();
+    if (generation !== this.generation) return;
+    await this.setStatus(true, this.okMessage());
+    if (generation !== this.generation) return;
+    this.scheduleLoop(Math.max(0, this.pollMs() - (this.now() - known.at)), generation);
+  }
+
+  /**
+   * Discovery again from the devices of the last reading (a pause, a wait),
+   * or at least the network device when nothing was read yet.
+   */
   async restoreKnown() {
-    if (!this.known) return;
-    for (const device of this.known.devices) this.devices.set(device.mac, device);
+    for (const device of this.known?.devices ?? []) this.devices.set(device.mac, device);
     await this.publishDiscovered();
   }
 
@@ -363,6 +407,8 @@ export class FingApp {
     await this.publishTransports();
     if (isKeyRefused(err)) {
       this.blocked = true;
+      // Nothing is shown again from a key that is refused now.
+      this.known = null;
       await this.store.set('refusals', this.agentKey(), await this.refusalKey(this.config));
       this.logger.warn(
         `API key refused by the Fing Agent (HTTP ${err.status}): not retried until the configuration is saved`,
@@ -443,25 +489,44 @@ export class FingApp {
     return reading;
   }
 
+  /**
+   * The devices followed: those created in Gladys first, then the others in
+   * MAC order, LIMITS.DEVICES at most (a device added from Discovery never
+   * leaves the list because another one joined the network).
+   */
+  pickFollowed(all) {
+    const created = new Set(createdDevices(this.gladys).devices.map((d) => d.mac));
+    const first = all.filter((device) => created.has(device.mac));
+    const rest = all.filter((device) => !created.has(device.mac));
+    return [...first, ...rest].slice(0, LIMITS.DEVICES);
+  }
+
   async read({ publish }) {
     const client = this.client;
+    const generation = this.generation;
     if (!client) return;
+    // A reading that ends after a restart (new configuration, Gladys gone)
+    // publishes nothing, fires nothing and sets no status: it is not the
+    // reading of the current configuration.
+    const stale = () => client !== this.client || generation !== this.generation;
     const { devices: all } = await client.devices();
-    if (client !== this.client) return;
+    if (stale()) return;
     // A pause asked earlier is over (the reading worked): forget it.
     if (this.store.get('meta', this.pauseKey())) {
       await this.store.set('meta', this.pauseKey(), null);
+      if (stale()) return;
     }
     this.pausedUntil = 0;
 
-    const followed = all.slice(0, LIMITS.DEVICES);
+    const followed = this.pickFollowed(all);
     const events = [];
     if (this.baseline) {
       for (const device of followed) {
         const was = this.devices.get(device.mac);
         if (!was) {
-          // A MAC address Fing did not list at the previous reading.
-          events.push([SCENE_TRIGGERS.NEW_DEVICE, device]);
+          // A MAC address Fing did not list at the previous reading (all of
+          // it, beyond the devices followed).
+          if (!this.allMacs.has(device.mac)) events.push([SCENE_TRIGGERS.NEW_DEVICE, device]);
           continue;
         }
         if (was.online === false && device.online === true) {
@@ -473,6 +538,7 @@ export class FingApp {
       }
     }
     this.devices = new Map(followed.map((device) => [device.mac, device]));
+    this.allMacs = new Set(all.map((device) => device.mac));
     this.capped = all.length - followed.length;
     this.counts = {
       total: all.length,
@@ -482,21 +548,31 @@ export class FingApp {
     this.online = true;
     this.retryDelay = this.minRetry();
     this.retryWait = null;
-    this.known = { key: this.knownKey(this.config), devices: followed, at: this.now() };
+    this.known = {
+      key: this.knownKey(this.config),
+      ok: true,
+      devices: followed,
+      allMacs: this.allMacs,
+      counts: this.counts,
+      capped: this.capped,
+      at: this.now(),
+    };
 
-    const discoveredKey = JSON.stringify(
-      followed.map((d) => [d.mac, d.name, d.vendor, d.model, d.type]),
-    );
+    const discoveredKey = discoveredKeyOf(followed);
     if (publish || discoveredKey !== this.discoveredKey) await this.publishDiscovered();
+    if (stale()) return;
     this.discoveredKey = discoveredKey;
     await this.publishDeviceStates();
+    if (stale()) return;
     await this.publishTransports();
     for (const [key, device] of events.slice(0, LIMITS.EVENTS_PER_ROUND)) {
+      if (stale()) return;
       await this.fire(key, device);
     }
     if (events.length > LIMITS.EVENTS_PER_ROUND) {
       this.logger.warn(`${events.length - LIMITS.EVENTS_PER_ROUND} device event(s) not sent`);
     }
+    if (stale()) return;
     await this.setStatus(true, this.okMessage());
   }
 
@@ -528,11 +604,18 @@ export class FingApp {
     });
   }
 
-  /** Discovery (scan button): read again when connected, else what is known. */
+  /**
+   * Discovery (scan button): read again when connected and the last reading
+   * is older than the poll interval (never faster), else what is known.
+   */
   async publishDiscovery() {
     if (this.reading) {
       // A reading is in flight: no second request, publish what it brings.
       await this.reading.catch(() => {});
+      await this.publishDiscovered();
+      return;
+    }
+    if (this.online && this.freshKnown()) {
       await this.publishDiscovered();
       return;
     }
@@ -565,24 +648,35 @@ export class FingApp {
     const counts = [];
     const online = [];
     const texts = [];
+    let skipped = 0;
     for (const { mac } of created.devices) {
       const device = this.devices.get(mac);
       if (!device) continue;
-      const ids = deviceIds(this.gladys, mac);
-      if (device.online !== null) {
-        online.push({
-          device_feature_external_id: ids.feature(FEATURES.ONLINE),
-          state: device.online ? 1 : 0,
-        });
-      }
-      const values = [
-        [FEATURES.IP, device.ip],
-        [FEATURES.LAST_CHANGE, formatDate(device.lastChange)],
-      ];
-      for (const [key, value] of values) {
-        if (value) texts.push({ device_feature_external_id: ids.feature(key), text: value });
+      // One device that cannot be read never stops the others, nor is it
+      // taken for a failure of the Fing Agent.
+      try {
+        const ids = deviceIds(this.gladys, mac);
+        const entries = [];
+        if (device.online !== null) {
+          entries.push({
+            device_feature_external_id: ids.feature(FEATURES.ONLINE),
+            state: device.online ? 1 : 0,
+          });
+        }
+        const values = [
+          [FEATURES.IP, device.ip],
+          [FEATURES.LAST_CHANGE, formatDate(device.lastChange)],
+        ];
+        const textEntries = values
+          .filter(([, value]) => value)
+          .map(([key, value]) => ({ device_feature_external_id: ids.feature(key), text: value }));
+        online.push(...entries);
+        texts.push(...textEntries);
+      } catch {
+        skipped += 1;
       }
     }
+    if (skipped > 0) this.logger.warn(`${skipped} device(s) not published (unexpected values)`);
     if (created.network && this.counts) {
       const ids = networkIds(this.gladys);
       counts.push(
