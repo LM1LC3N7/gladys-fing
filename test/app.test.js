@@ -16,6 +16,10 @@ import { registerHandlers } from '../src/handlers.js';
 import { KEY, createFakeFing, fingDevice } from './helpers/fakeFing.js';
 import { createFakeTimers } from './helpers/fakeTimers.js';
 
+const { version: VERSION } = JSON.parse(
+  readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+);
+
 const T0 = Date.parse('2026-10-17T08:00:00Z');
 const SELECTOR = 'fing';
 const ids = createFakeGladys({ selector: SELECTOR });
@@ -120,7 +124,7 @@ test('start: status, Discovery, states, counts, badges; read every 60 s', async 
     host: '192.168.1.5',
     port: 49090,
     path: `/1/devices?auth=${KEY}`,
-    headers: { 'user-agent': 'gladys-fing/0.1.0' },
+    headers: { 'user-agent': `gladys-fing/${VERSION}` },
   });
   await poll(timers);
   assert.equal(fing.requests.length, 2);
