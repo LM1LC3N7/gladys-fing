@@ -1,6 +1,6 @@
 {
   "name": "gladys-fing",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "Gladys Assistant external integration for Fing: the devices of your network seen by a Fing Agent or a Fingbox (online, IP, new devices), read only, through its local API. Unofficial, not affiliated with Fing.",
   "type": "module",

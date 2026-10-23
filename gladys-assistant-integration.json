@@ -6,8 +6,8 @@
     "en": "Devices of your network seen by a Fing Agent or Fingbox: online, IP, new devices.",
     "fr": "Appareils de votre réseau vus par un Fing Agent ou une Fingbox : en ligne, IP, nouveaux."
   },
-  "version": "0.1.1",
-  "docker_image": "ghcr.io/lm1lc3n7/gladys-fing:0.1.1",
+  "version": "0.1.2",
+  "docker_image": "ghcr.io/lm1lc3n7/gladys-fing:0.1.2",
   "gladys_version": ">=5.1.0",
   "cover_image": "https://raw.githubusercontent.com/LM1LC3N7/gladys-fing/main/cover.png",
   "categories": ["network", "security"],

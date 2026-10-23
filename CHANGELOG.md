@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-10-23
+
 ## [0.1.1] - 2026-10-20
 
 ### Added
@@ -32,5 +34,6 @@ the notes of the version's GitHub Release.
   always among the 500 followed.
 - Documentation in English and French. Never tested with a real Fing Agent.
 
-[Unreleased]: https://github.com/LM1LC3N7/gladys-fing/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/LM1LC3N7/gladys-fing/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/LM1LC3N7/gladys-fing/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/LM1LC3N7/gladys-fing/releases/tag/v0.1.1
