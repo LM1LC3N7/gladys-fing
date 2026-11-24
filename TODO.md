@@ -106,3 +106,7 @@ up to date at the end of every milestone.
   SDK allows it.
 - A dashboard widget (devices online, new devices).
 - Optional: the agent description (port 44444) for the test button.
+
+## Next patch
+
+- Migration review minors: see `_lots/migration-reviews/w14-gladys-fing-r1.md`.
