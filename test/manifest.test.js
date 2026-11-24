@@ -10,6 +10,7 @@ import { createFakeGladys } from '@gladysassistant/integration-sdk/testing';
 import { DEFAULTS } from '../src/config.js';
 import { ACTIONS, FEATURES, POLL_INTERVALS, SCENE_TRIGGERS } from '../src/constants.js';
 import { buildDevice, buildNetworkDevice } from '../src/devices.js';
+import { assertCoreDevice } from './helpers/coreFeature.js';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 const manifest = JSON.parse(read('gladys-assistant-integration.json'));
@@ -185,4 +186,19 @@ test('features: read only, no switch, no unit, categories of the core; keys fixe
     'ext:fing:device:aabbccddeeff',
     'the external id shape is forever',
   );
+});
+
+test('every feature has a numeric min and max and the other core fields; none polled', () => {
+  const gladys = createFakeGladys({ selector: 'fing' });
+  const devices = [
+    buildDevice(gladys, { mac: 'aabbccddeeff', name: 'Printer', vendor: 'HP', type: 'Printer' }),
+    buildDevice(gladys, { mac: '001122334455', name: 'x' }),
+    buildNetworkDevice(gladys),
+  ];
+  let features = 0;
+  for (const device of devices) {
+    features += assertCoreDevice(device, device.external_id);
+    assert.equal(device.should_poll, false, `${device.external_id}: should_poll`);
+  }
+  assert.equal(features, 3 + 3 + 2);
 });

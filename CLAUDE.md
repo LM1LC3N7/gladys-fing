@@ -8,8 +8,8 @@ contributors.
 A Gladys Assistant **external integration** for Fing: a Node.js service (Node
 22+, ESM, no build step) that runs in its own sandboxed Docker container and
 talks to Gladys through
-[`@gladysassistant/integration-sdk`](https://github.com/GladysAssistant/integration-sdk-js),
-its only runtime dependency. It reads the devices of a network from the local
+[`@gladysassistant/integration-sdk`](https://github.com/GladysAssistant/integration-sdk-js)
+(v0.16), its only runtime dependency. It reads the devices of a network from the local
 API of a Fing Agent or a Fingbox (ported from fing-agent-pyapi, Apache-2.0).
 Read only. See `TODO.md` for the status and every decision.
 
@@ -17,7 +17,7 @@ Read only. See `TODO.md` for the status and every decision.
 
 ```bash
 npm install
-npm test                                  # node --test, the built-in runner
+npm test                                  # node --test --test-timeout=60000
 node --test test/app.test.js              # one file
 node --test --test-name-pattern "429"     # tests whose name matches
 npm run lint                              # ESLint
@@ -53,6 +53,12 @@ test/                             node --test, fake Gladys (SDK) + fake Fing Age
 
 ## Rules
 
+- **Features follow the core model.** Every feature has a non-empty `name`, a
+  numeric `min` and `max` (0/0 for text), boolean `read_only` and
+  `has_feedback`: Gladys refuses it otherwise, and the SDK's fake Gladys
+  (0.16.1) too; `test/helpers/coreFeature.js` checks every device kind.
+  Devices carry `should_poll: false` (Gladys 5.3 polls a device with
+  `poll_frequency` unless it says so).
 - **External ids are forever**: `device:<MAC, 12 lowercase hex digits>`,
   `network:main`, and the feature keys of `src/constants.js`. Changing one
   creates a new device and orphans the old one. The same goes for every key
